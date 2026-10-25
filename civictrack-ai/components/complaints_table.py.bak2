@@ -1,0 +1,106 @@
+"""Recent complaints table with search and filter controls."""
+
+from __future__ import annotations
+
+import pandas as pd
+import streamlit as st
+
+
+def _status_badge_html(status: str) -> str:
+    colors = {
+        "Open": "#ef4444",
+        "In Progress": "#f59e0b",
+        "Resolved": "#22c55e",
+        "Closed": "#64748b",
+    }
+    color = colors.get(status, "#94a3b8")
+    return (
+        f'<span class="status-badge" style="background:{color}15;'
+        f'color:{color};border:1px solid {color}40;">{status}</span>'
+    )
+
+
+def _priority_badge_html(priority: str) -> str:
+    colors = {
+        "Critical": "#dc2626",
+        "High": "#ef4444",
+        "Medium": "#f59e0b",
+        "Low": "#22c55e",
+    }
+    color = colors.get(priority, "#64748b")
+    return (
+        f'<span class="priority-badge" style="background:{color}15;'
+        f'color:{color};border:1px solid {color}40;">{priority}</span>'
+    )
+
+
+def render_complaints_table(complaints, limit: int = 10, key_prefix: str = "recent") -> None:
+    """Render a searchable/filterable complaints table.
+
+    Args:
+        complaints: DataFrame of complaints.
+        limit: Maximum number of rows to display after filtering.
+        key_prefix: Unique prefix for Streamlit widget keys to avoid collisions.
+    """
+    if complaints is None or complaints.empty:
+        st.info("No complaint data available.")
+        return
+
+    required = {"issue_id", "category", "location", "priority", "status"}
+    missing = required - set(complaints.columns)
+    if missing:
+        st.error(f"Complaint data is missing required columns: {', '.join(sorted(missing))}")
+        return
+
+    df = complaints.copy()
+
+    # Filter controls
+    col_search, col_category, col_status, col_priority = st.columns([3, 2, 2, 2])
+    with col_search:
+        search = st.text_input(
+            "Search issues",
+            placeholder="Search by issue ID, category, or location...",
+            key=f"{key_prefix}_search",
+        )
+    with col_category:
+        categories = ["All"] + sorted(df["category"].dropna().unique().tolist())
+        category_filter = st.selectbox("Category", categories, key=f"{key_prefix}_category")
+    with col_status:
+        statuses = ["All"] + sorted(df["status"].dropna().unique().tolist())
+        status_filter = st.selectbox("Status", statuses, key=f"{key_prefix}_status")
+    with col_priority:
+        priorities = ["All"] + sorted(df["priority"].dropna().unique().tolist())
+        priority_filter = st.selectbox("Priority", priorities, key=f"{key_prefix}_priority")
+
+    # Apply filters
+    filtered = df
+    if search:
+        mask = df.astype(str).apply(
+            lambda row: row.str.contains(search, case=False, na=False).any(), axis=1
+        )
+        filtered = filtered[mask]
+    if category_filter != "All":
+        filtered = filtered[filtered["category"] == category_filter]
+    if status_filter != "All":
+        filtered = filtered[filtered["status"] == status_filter]
+    if priority_filter != "All":
+        filtered = filtered[filtered["priority"] == priority_filter]
+
+    filtered = filtered.head(limit)
+
+    st.markdown(f"**Showing {len(filtered)} issue(s)**")
+
+    # Render rows as styled HTML for badge styling
+    for _, row in filtered.iterrows():
+        st.markdown(
+            f"""
+            <div class="complaint-row">
+                <div class="issue-id">{row['issue_id']}</div>
+                <div class="issue-category">{row['category']}</div>
+                <div class="issue-location">{row['location']}</div>
+                <div class="issue-priority">{_priority_badge_html(str(row['priority']))}</div>
+                <div class="issue-status">{_status_badge_html(str(row['status']))}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
