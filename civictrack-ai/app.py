@@ -14,7 +14,8 @@ from components.charts import render_category_chart, render_status_chart
 from components.complaints_table import render_complaints_table
 from components.kpi_cards import render_kpi_cards
 from components.sidebar import render_sidebar
-from data.sample_data import compute_kpi_metrics, load_complaints, load_projects
+from data.complaint_storage import get_combined_complaints
+from data.sample_data import compute_kpi_metrics, load_projects
 
 from pages.ai_assistant import render_ai_assistant_page
 from pages.budget_projects import render_budget_projects_page
@@ -42,34 +43,14 @@ def main() -> None:
     _inject_css()
 
     # Load datasets (labeled as sample/synthetic inside data module).
+    # User-submitted complaints are merged in by the shared storage loader so
+    # every page sees the same sample-plus-submitted dataset.
     try:
-        complaints = load_complaints()
+        complaints = get_combined_complaints()
         projects = load_projects()
     except Exception as exc:  # noqa: BLE001 - surface data load errors to user
         st.error(f"Failed to load dataset: {exc}")
         st.stop()
-
-    # Merge session-submitted issues so all pages see them
-    try:
-        reported = st.session_state.get("reported_issues", [])
-        if reported:
-            import pandas as _pd
-
-            reported_df = _pd.DataFrame(reported)
-            # Ensure expected columns exist
-            for col in ["issue_id", "category", "location", "priority", "status", "date_reported", "description"]:
-                if col not in reported_df.columns:
-                    reported_df[col] = None
-            # Align column order/types loosely
-            complaints = _pd.concat([complaints, reported_df[complaints.columns.intersection(reported_df.columns)]], ignore_index=True)
-            # If reported has extra columns not in complaints, try to append with NaN for missing
-            missing_cols = [c for c in complaints.columns if c not in reported_df.columns]
-            if missing_cols and not reported_df.empty:
-                for c in missing_cols:
-                    reported_df[c] = None
-                complaints = _pd.concat([complaints, reported_df[complaints.columns]], ignore_index=True)
-    except Exception:
-        pass
 
     selection = render_sidebar()
 
