@@ -13,6 +13,7 @@ from datetime import date
 import base64
 import io
 import json
+import os
 import pandas as pd
 import requests
 import streamlit as st
@@ -142,14 +143,18 @@ def _determine_priority(category: str, description: str) -> tuple[str, str]:
 
 # --- AI Photo-Based Issue Reporting ---
 
-# Vision model for photo analysis. Use a vision-capable model available locally.
-# qwen3.5:4b has vision capability in this environment; if unavailable, pull an
-# alternative (e.g. qwen2.5-vl:7b).
-VISION_MODEL = "qwen3.5:4b"
+# Vision model for photo analysis. Configurable via the VISION_MODEL
+# environment variable. qwen3.5:4b has vision capability in this environment
+# but has NOT been end-to-end tested with a real image. If unavailable, set
+# VISION_MODEL to an alternative (e.g. qwen2.5-vl:7b).
+VISION_MODEL = os.environ.get("VISION_MODEL", "qwen3.5:4b")
 VISION_TIMEOUT_SECONDS = 120
 
-# Ollama endpoint (shared with ai_assistant.py).
-OLLAMA_URL = "http://localhost:11434/api/chat"
+# Ollama endpoint. Configurable via the OLLAMA_URL environment variable.
+# Defaults to localhost for local development. On Streamlit Community Cloud,
+# localhost will NOT reach a user's personal Ollama instance; set OLLAMA_URL
+# to a reachable backend or leave unset to disable photo analysis gracefully.
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
 
 _VALID_IMAGE_TYPES = ("jpg", "jpeg", "png")
 
@@ -224,29 +229,17 @@ def _analyze_image_with_vision(image_bytes: bytes, filename: str) -> dict:
     }
 
     try:
-        print(f"[DIAG] POST {OLLAMA_URL} model={VISION_MODEL} timeout={VISION_TIMEOUT_SECONDS}")
         response = requests.post(
             OLLAMA_URL,
             json=payload,
             timeout=VISION_TIMEOUT_SECONDS,
             headers={"Content-Type": "application/json"},
         )
-        try:
-            print(f"[DIAG] HTTP {response.status_code} content-type={getattr(response, 'headers', {}).get('Content-Type')}")
-        except Exception:
-            print(f"[DIAG] HTTP {getattr(response, 'status_code', 'unknown')}")
-        try:
-            print(f"[DIAG] BODY: {getattr(response, 'text', '')[:500]}")
-        except Exception as _e:
-            print(f"[DIAG] BODY_READ_ERR: {_e}")
     except requests.exceptions.Timeout:
-        print("[DIAG] TIMEOUT")
         return {"error": "timeout"}
-    except requests.exceptions.ConnectionError as exc:
-        print(f"[DIAG] CONNECTION_ERROR: {exc}")
+    except requests.exceptions.ConnectionError:
         return {"error": "connection"}
     except Exception as exc:  # noqa: BLE001
-        print(f"[DIAG] EXC: {exc}")
         return {"error": str(exc)}
 
     if response.status_code != 200:
@@ -268,9 +261,7 @@ def _analyze_image_with_vision(image_bytes: bytes, filename: str) -> dict:
         if detail:
             # Keep the message short and single-line.
             detail = " ".join(detail.split())[:200]
-            print(f"[DIAG] ERR_DETAIL: {detail}")
             return {"error": detail}
-        print(f"[DIAG] FALLBACK_HTTP_{response.status_code}")
         return {"error": f"http_{response.status_code}"}
     try:
         data = response.json()
@@ -374,10 +365,27 @@ def render_report_issue_page(complaints, projects) -> None:
                 err = ai_analysis.get("error", "unknown") if ai_analysis else "unknown"
                 st.warning(
                     f"AI image analysis unavailable ({err}). "
-                    f"To enable photo analysis, pull and run a vision model: "
-                    f"`ollama pull {VISION_MODEL}` and `ollama serve`. "
-                    "You can still enter the details manually below."
+                    "Ollama may not be running or may not be reachable from "
+                    "this deployment. You can still enter the details "
+                    "manually below."
                 )
+                if err == "connection":
+                    st.info(
+                        "To enable photo analysis, run Ollama locally and set "
+                        "the `OLLAMA_URL` environment variable to your Ollama "
+                        f"endpoint (default: `http://localhost:11434/api/chat`), "
+                        f"and ensure a vision-capable model is pulled "
+                        f"(e.g. `{VISION_MODEL}`). On Streamlit Community "
+                        "Cloud, `localhost` will not reach a personal "
+                        "computer's Ollama instance."
+                    )
+                else:
+                    st.info(
+                        f"To enable photo analysis, pull and run a vision "
+                        f"model: `ollama pull {VISION_MODEL}` and "
+                        "`ollama serve`. You can still enter the details "
+                        "manually below."
+                    )
 
     # --- Live inputs for category and description ---
     col1, col2 = st.columns(2)
