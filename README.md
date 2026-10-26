@@ -6,6 +6,15 @@ A local-first Streamlit application for recording, exploring, and prioritizing c
 
 > **Note:** All sample data in this project is synthetic and created for demonstration purposes only. It is NOT verified official government data and does not represent real civic infrastructure, complaints, projects, or budgets.
 
+## 🚀 Live Demo
+
+Try the app live on Streamlit Community Cloud:
+
+- **Live Demo:** https://civictrack-ai-pro-ssnndhjpgschje97xywcfq.streamlit.app/
+- **GitHub Repository:** https://github.com/mdsahilparvezai/civictrack-ai-pro
+
+> The live demo runs on Streamlit Community Cloud. AI features that require a local Ollama server (such as photo analysis and the AI Assistant chat) will not work in the cloud demo unless Ollama is also deployed. Local installation is recommended for full AI functionality.
+
 ---
 
 ## Problem Statement
