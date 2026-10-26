@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import streamlit as st
+
 from components.complaints_table import render_complaints_table
 
 
